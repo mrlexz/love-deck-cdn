@@ -3,7 +3,9 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "backup": "pg_dump postgresql://postgres:S0jR6Pa3UQmebBlx@db.exslhvvumjuuypkyiwwm.supabase.co:5432/postgres > backup_2.sql",
+    "restore": "psql \"postgresql://postgres:pHKy31vJyofYzSHj@db.ltvpdjbsoqiacnmadwya.supabase.co:5432/postgres\" < backup.sql"
   },
   "keywords": [],
   "author": "",

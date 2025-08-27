@@ -56,7 +56,9 @@ serve(async (req) => {
         `
         )
         .eq("is_active", true)
-        .order("created_at", { ascending: false });
+        .is("deleted_at", null)
+        .order("created_at", { ascending: false })
+        .order("updated_at", { ascending: false });
 
       if (questionId) {
         query = query.eq("id", questionId).single();
@@ -258,6 +260,7 @@ serve(async (req) => {
           is_active: body.is_active,
           example_vi: body.example_vi,
           example_en: body.example_en,
+          updated_at: new Date(),
         })
         .eq("id", questionId)
         .select()
@@ -307,6 +310,7 @@ serve(async (req) => {
         .from("question_variant")
         .update({
           name: body.question_variant_name,
+          updated_at: new Date(),
         })
         .eq("question_id", questionId)
         .select()
@@ -332,6 +336,8 @@ serve(async (req) => {
           text_vi: option.text_vi,
           is_correct: option.is_correct ?? false,
           question_variant_id: updatedVariant.id,
+          created_at: new Date(),
+          updated_at: new Date(),
         }));
 
         const { error: optionsError } = await supabaseClient
@@ -389,7 +395,9 @@ serve(async (req) => {
       // Xóa question (cascade sẽ tự động xóa variants và options)
       const { error } = await supabaseClient
         .from("questions")
-        .delete()
+        .update({ 
+          deleted_at: new Date() // Cập nhật thời gian
+        })
         .eq("id", questionId);
 
       if (error) {
