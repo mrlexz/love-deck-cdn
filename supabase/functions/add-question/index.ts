@@ -58,7 +58,7 @@ serve(async (req) => {
         .eq("is_active", true)
         .is("deleted_at", null)
         .order("created_at", { ascending: false })
-        .order("updated_at", { ascending: false });
+        .order("id", { ascending: false });
 
       if (questionId) {
         query = query.eq("id", questionId).single();
