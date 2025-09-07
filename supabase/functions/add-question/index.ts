@@ -24,6 +24,7 @@ interface CreateQuestionRequest {
   topic_id?: string;
   question_variant_name: "open_ended" | "multiple_choice";
   question_variant_options?: Option[];
+  question_set_id?: string;
 }
 
 serve(async (req) => {
@@ -41,6 +42,7 @@ serve(async (req) => {
 
     const url = new URL(req.url);
     const questionId = url.searchParams.get("id");
+    const questionSetID = url.searchParams.get("question_set_id");
 
     // GET: Lấy question với variants và options
     if (req.method === "GET") {
@@ -52,6 +54,10 @@ serve(async (req) => {
           question_variant (
             *,
             options (*)
+          ),
+          topics_questions (
+            *,
+            topics (*)
           )
         `
         )
@@ -62,6 +68,10 @@ serve(async (req) => {
 
       if (questionId) {
         query = query.eq("id", questionId).single();
+      }
+
+      if (questionSetID) {
+        query = query.eq("question_set_id", questionSetID);
       }
 
       const { data, error } = await query;
@@ -138,6 +148,45 @@ serve(async (req) => {
         );
       }
 
+      if (body.topic_id) {
+        const { data: topic, error: topicError } = await supabaseClient
+          .from("topics")
+          .select()
+          .eq("id", body.topic_id)
+          .single();
+
+        if (topicError) {
+          console.error("Topic error:", topicError);
+          throw topicError;
+        }
+
+        if (!topic) {
+          return new Response(
+            JSON.stringify({
+              success: false,
+              error: "Topic không tồn tại",
+            }),
+            {
+              status: 400,
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+            }
+          );
+        }
+
+        if (topic.deleted_at) {
+          return new Response(
+            JSON.stringify({
+              success: false,
+              error: "Topic đã bị xóa",
+            }),
+            {
+              status: 400,
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+            }
+          );
+        }
+      }
+
       // Bắt đầu transaction
       const { data: question, error: questionError } = await supabaseClient
         .from("questions")
@@ -148,6 +197,7 @@ serve(async (req) => {
             is_active: body.is_active ?? true,
             example_vi: body.example_vi,
             example_en: body.example_en,
+            question_set_id: body?.question_set_id ?? null,
           },
         ])
         .select()
@@ -206,6 +256,28 @@ serve(async (req) => {
         }
       }
 
+      if (body.topic_id) {
+        const { error: topicQuestionError } = await supabaseClient
+          .from("topics_questions")
+          .insert([
+            {
+              topic_id: body.topic_id,
+              question_id: question.id,
+            },
+          ]);
+
+        if (topicQuestionError) {
+          console.error("Topic question creation error:", topicQuestionError);
+          // Rollback - xóa question, variants và options đã tạo
+          await supabaseClient
+            .from("question_variant")
+            .delete()
+            .eq("question_id", question.id);
+          await supabaseClient.from("questions").delete().eq("id", question.id);
+          throw topicQuestionError;
+        }
+      }
+
       // Lấy dữ liệu complete để trả về
       const { data: completeQuestion } = await supabaseClient
         .from("questions")
@@ -215,6 +287,10 @@ serve(async (req) => {
           question_variant (
             *,
             options (*)
+          ),
+          topics_questions (
+            *,
+            topics (*)
           )
         `
         )
@@ -260,6 +336,7 @@ serve(async (req) => {
           is_active: body.is_active,
           example_vi: body.example_vi,
           example_en: body.example_en,
+          question_set_id: body?.question_set_id ?? null,
           updated_at: new Date(),
         })
         .eq("id", questionId)
@@ -348,6 +425,34 @@ serve(async (req) => {
           console.error("Options update error:", optionsError);
           throw optionsError;
         }
+      }
+
+      if (body.topic_id) {
+        // Xóa topic cũ
+        await supabaseClient
+          .from("topics_questions")
+          .delete()
+          .eq("question_id", questionId);
+        // Thêm topic mới
+        const { error: topicQuestionError } = await supabaseClient
+          .from("topics_questions")
+          .insert([
+            {
+              topic_id: body.topic_id,
+              question_id: questionId,
+            },
+          ]);
+
+        if (topicQuestionError) {
+          console.error("Topic question creation error:", topicQuestionError);
+          throw topicQuestionError;
+        }
+      } else {
+        // Xóa topic cũ
+        await supabaseClient
+          .from("topics_questions")
+          .delete()
+          .eq("question_id", questionId);
       }
 
       // Lấy dữ liệu complete để trả về
